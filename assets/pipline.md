@@ -130,6 +130,20 @@ qpos.shape:  torch.Size([4, 14])
 image.shape:  torch.Size([4, 3, 3, 480, 640])
 actions.shape:  torch.Size([4, 32, 16])
 is_pad.shape:  torch.Size([4, 32])
+
+
+# hidden_dim=默认512
+action_embed = nn.Linear(actions, hidden_dim)     # [4, 32, 512]
+qpos_embed = nn.Linear(qpos, hidden_dim)          # (4, 512)
+qpos_embed = torch.unsqueeze(qpos_embed, axis=1)  # (4, 1, 512)
+
+cls_embed = nn.Embedding(1, hidden_dim).weight    # [1, 512]
+cls_embed = torch.unsqueeze(cls_embed, axis=0).repeat(bs, 1, 1) # (bs, 1, hidden_dim) [4, 1, 512]
+
+encoder_input = torch.cat([cls_embed, qpos_embed, action_embed], axis=1) # [4, 1+1+32, 512]
+encoder_input = encoder_input.permute(1, 0, 2)   # [34, 4, 512]
+
+
 ~~~
 
 
