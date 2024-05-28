@@ -12,6 +12,7 @@ e = IPython.embed
 def get_args_parser():
     parser = argparse.ArgumentParser('Set transformer detector', add_help=False)
     parser.add_argument('--lr', default=1e-4, type=float) # will be overridden
+    # 在ACT中, 只是判断train_backbone = args.lr_backbone > 0, 而train_backbone中在backbone没有使用
     parser.add_argument('--lr_backbone', default=1e-5, type=float) # will be overridden
     parser.add_argument('--batch_size', default=2, type=int) # not used
     parser.add_argument('--weight_decay', default=1e-4, type=float)
@@ -24,35 +25,51 @@ def get_args_parser():
     # * Backbone
     parser.add_argument('--backbone', default='resnet18', type=str, # will be overridden
                         help="Name of the convolutional backbone to use")
+    # 最后一层网络替换成扩展卷积
     parser.add_argument('--dilation', action='store_true',
                         help="If true, we replace stride with dilation in the last convolutional block (DC5)")
+    
+    # 位置编码器, 使用三角函数
     parser.add_argument('--position_embedding', default='sine', type=str, choices=('sine', 'learned'),
                         help="Type of positional embedding to use on top of the image features")
+    
+    # 相机list
     parser.add_argument('--camera_names', default=[], type=list, # will be overridden
                         help="A list of camera names")
 
     # * Transformer
+    # 编码层
     parser.add_argument('--enc_layers', default=4, type=int, # will be overridden
                         help="Number of encoding layers in the transformer")
+    # 解码层
     parser.add_argument('--dec_layers', default=6, type=int, # will be overridden
                         help="Number of decoding layers in the transformer")
+    
+    # 前馈神经网络的中间层
     parser.add_argument('--dim_feedforward', default=2048, type=int, # will be overridden
                         help="Intermediate size of the feedforward layers in the transformer blocks")
+    # 词嵌入的维度
     parser.add_argument('--hidden_dim', default=256, type=int, # will be overridden
                         help="Size of the embeddings (dimension of the transformer)")
+    # dropout
     parser.add_argument('--dropout', default=0.1, type=float,
                         help="Dropout applied in the transformer")
+    # 多头数量
     parser.add_argument('--nheads', default=8, type=int, # will be overridden
                         help="Number of attention heads inside the transformer's attentions")
+    
+    # query数量
     parser.add_argument('--num_queries', default=400, type=int, # will be overridden
                         help="Number of query slots")
+    
     parser.add_argument('--pre_norm', action='store_true')
 
     # * Segmentation
     parser.add_argument('--masks', action='store_true',
                         help="Train segmentation head if the flag is provided")
 
-    # repeat args in imitate_episodes just to avoid error. Will not be used
+    # repeat args in imitate_episodes just to avoid error. Will not be used 
+    # 重复imitate_episodes中的参数 不会被调用
     parser.add_argument('--eval', action='store_true')
     parser.add_argument('--onscreen_render', action='store_true')
     parser.add_argument('--ckpt_dir', action='store', type=str, help='ckpt_dir', required=True)

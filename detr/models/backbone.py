@@ -84,14 +84,16 @@ class BackboneBase(nn.Module):
 
 
 class Backbone(BackboneBase):
+    # restNet主干网络和冻结层归一化
     """ResNet backbone with frozen BatchNorm."""
-    def __init__(self, name: str,
-                 train_backbone: bool,
-                 return_interm_layers: bool,
-                 dilation: bool):
+    def __init__(self, name: str,                 # resnet18
+                 train_backbone: bool,            # True
+                 return_interm_layers: bool,      # False
+                 dilation: bool):                 # False
         backbone = getattr(torchvision.models, name)(
             replace_stride_with_dilation=[False, False, dilation],
             pretrained=is_main_process(), norm_layer=FrozenBatchNorm2d) # pretrained # TODO do we want frozen batch_norm??
+        
         num_channels = 512 if name in ('resnet18', 'resnet34') else 2048
         super().__init__(backbone, train_backbone, num_channels, return_interm_layers)
 
@@ -108,15 +110,17 @@ class Joiner(nn.Sequential):
             out.append(x)
             # position encoding
             pos.append(self[1](x).to(x.dtype))
-
         return out, pos
 
 
 def build_backbone(args):
+    # 位置编码，默认采用
     position_embedding = build_position_encoding(args)
-    train_backbone = args.lr_backbone > 0
+    train_backbone = args.lr_backbone > 0  
     return_interm_layers = args.masks
+    # 主干网络用的ResNet, 冻结了Batch参数, 返回的最后一层数据
     backbone = Backbone(args.backbone, train_backbone, return_interm_layers, args.dilation)
+    
     model = Joiner(backbone, position_embedding)
     model.num_channels = backbone.num_channels
     return model

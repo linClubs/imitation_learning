@@ -50,12 +50,18 @@ class Transformer(nn.Module):
         # TODO flatten only when input has H and W
         if len(src.shape) == 4: # has H and W
             # flatten NxCxHxW to HWxNxC
+            # 图像数据
             bs, c, h, w = src.shape
+            # 图像数据转成[900, 4, 512]
             src = src.flatten(2).permute(2, 0, 1)
+            
+            # [1, 512, 15, 60] -> [900, 4, 512] 把 [900, 1, 512]重复4次           
             pos_embed = pos_embed.flatten(2).permute(2, 0, 1).repeat(1, bs, 1)
-            query_embed = query_embed.unsqueeze(1).repeat(1, bs, 1)
-            # mask = mask.flatten(1)
 
+            # [32, 4, 512]
+            query_embed = query_embed.unsqueeze(1).repeat(1, bs, 1)
+
+            # mask = mask.flatten(1)
             additional_pos_embed = additional_pos_embed.unsqueeze(1).repeat(1, bs, 1) # seq, bs, dim
             pos_embed = torch.cat([additional_pos_embed, pos_embed], axis=0)
 
@@ -292,7 +298,7 @@ def _get_clones(module, N):
 
 def build_transformer(args):
     return Transformer(
-        d_model=args.hidden_dim,
+        d_model=args.hidden_dim,   
         dropout=args.dropout,
         nhead=args.nheads,
         dim_feedforward=args.dim_feedforward,

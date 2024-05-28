@@ -72,7 +72,7 @@ for t in tqdm(range(max_timesteps)):
 print(f'Avg fps: {max_timesteps / (time.time() - time0)}')
 ~~~
 
-## 1.1 改进
+## 1.2 改进
 
 1. 增加了传感器软同步部分,保证了传感器数据的实时性
 2. 增加其他传感器扩展
@@ -114,9 +114,18 @@ image_data = image_data / 255.0
 ~~~
 
 
-# 2 算法
+# 3 算法
 
-## 2.1 VAE模型 
+## 3.1 VAE模型 
+
++ 通过(图像**resnet特征层**、qpos**一层线性层**)和(qpos与action只**编码器**得到潜在特征)，使用Transformer得到预测的**序列actions**, 和潜在特征的均值和方差
+
+
+1. encode部分
+
++ 只编码action和qpos+位置编码, 生成潜在空间的特征和`mu，log(var)`
++ 最后潜在空间的特征通过线性层映射回去`latent_input[4, 512]`
++ 返回浅层空间`latent_input[4, 512]`、`mu[4, 32]`、`log(var)[4, 32]`
 
 变分自编码器
 ~~~python
@@ -131,8 +140,7 @@ image.shape:  torch.Size([4, 3, 3, 480, 640])
 actions.shape:  torch.Size([4, 32, 16])
 is_pad.shape:  torch.Size([4, 32])
 
-
-# hidden_dim=默认512
+# hidden_dim=默认512  输入是action,qpos,词嵌入组合后得到encoder_input：[34, 4, 512]
 action_embed = nn.Linear(actions, hidden_dim)     # [4, 32, 512]
 qpos_embed = nn.Linear(qpos, hidden_dim)          # (4, 512)
 qpos_embed = torch.unsqueeze(qpos_embed, axis=1)  # (4, 1, 512)
@@ -143,7 +151,133 @@ cls_embed = torch.unsqueeze(cls_embed, axis=0).repeat(bs, 1, 1) # (bs, 1, hidden
 encoder_input = torch.cat([cls_embed, qpos_embed, action_embed], axis=1) # [4, 1+1+32, 512]
 encoder_input = encoder_input.permute(1, 0, 2)   # [34, 4, 512]
 
+# 只用了transform的编码层, 输入是encoder_input[34, 4, 512], 输出encoder_output统计所有的中间层输出
+encoder_output = self.encoder(encoder_input, pos=pos_embed, src_key_padding_mask=is_pad)
+# print("encoder_output: ", encoder_output.shape)
+
+# 只取编码层输出的的第一层encoder_output[0]作为结果,维度变成[4, 512]
+encoder_output = encoder_output[0] # take cls output only  # 组合时cls_embed排在0位
+# 然后预测2个值，一个mu,一个log(std)
+# self.latent_proj = nn.Linear(hidden_dim, self.latent_dim*2)
+latent_info = self.latent_proj(encoder_output)  # [4, 64]
+
+mu = latent_info[:, :self.latent_dim]          # 均值[4, 32]
+logvar = latent_info[:, self.latent_dim:]      # 方差[4, 32]
+latent_sample = reparametrize(mu, logvar)  # 重参数化 生成浅层空间特征[4, 32]
+latent_input = self.latent_out_proj(latent_sample) # 线性层映射回去[4, 512]
+return latent_input, probs, binaries, mu, logvar
+~~~
+
+2. 图像部分
++ n个摄像头建立了n个backbone， 这里是3个
++ 位置编码2种,一种是可学习的, 一种是三角函数
++ 通过resnet网络输入图像`[4, 3, 3, 480, 640]`,输出`[4, 3, 3, 15, 20]`和图像位置编码
+~~~python
+# 位置编码
+def build_position_encoding(args):
+    N_steps = args.hidden_dim // 2                 # 隐藏层512。N_steps=256
+    if args.position_embedding in ('v2', 'sine'):
+        # TODO find a better way of exposing other arguments
+        position_embedding = PositionEmbeddingSine(N_steps, normalize=True)
+    elif args.position_embedding in ('v3', 'learned'):
+        position_embedding = PositionEmbeddingLearned(N_steps)
+    else:
+        raise ValueError(f"not supported {args.position_embedding}")
+    return position_embedding
+
+
+# backbone
+def build_backbone(args):
+    position_embedding = build_position_encoding(args)
+    train_backbone = args.lr_backbone > 0   # True
+    return_interm_layers = args.masks       # 
+    # 主干网络用的ResNet, 冻结了Batch参数, 返回的最后一层数据, 
+    # train_backbone最后网络中没有使用这个参数
+    backbone_output = Backbone(args.backbone, train_backbone, return_interm_layers, args.dilation)
+    model = Joiner(backbone_output, position_embedding)
+    model.num_channels = backbone_output.num_channels
+    return model
+
+# 通过name获得搭建预训练模型 resnet18
+backbone = getattr(torchvision.models, name)(
+        # 将第1层、第2层使用原卷积,第3层替换成扩张卷积
+        replace_stride_with_dilation=[False, False, dilation],
+        # 否使用预训练的权重
+        # is_main_process()判断当前进程是否是主进程（在多GPU或分布式训练中），
+        # 以确保只有主进程下载和加载预训练权重，其他进程不重复下载
+        pretrained=is_main_process(), 
+        # 将模型中的批归一化层（Batch Normalization layer）替换为冻结的批归一化层（Frozen BatchNorm）
+        norm_layer=FrozenBatchNorm2d) # pretrained # TODO do we want frozen batch_norm
 
 ~~~
 
+3. act的VAE模型的forwad函数
+
++ 输入self.transformer(图像`[4, 512, 15, 60]`,掩码`None`, `query`词嵌入`[32, 512]`，图像位置编码`[1, 512, 15, 60]`, 潜层特征`[34, 4, 512]`, qpos的线性输出`[4, 512]`), 经过`Transformer`层后输出(保留中间层)`[7, 4, 32, 512]`
+
++ 经过Transformer后, 取的多头的第一层`[4, 32, 512]`作为Tr的输出，最后通过2个线性层得到输出`[4, 32, 16]`, 填充`[4, 32, 1]`
+
++ 这里得到的`[4, 32, 16]`表示模型的前向输出, 表示预测了32个连续的action
++ 最终forward返回值为`预测的acticons：a_hat[4, 32, 16], is_pad_hat[4, 32, 1], 均值和方差[mu(4, 32), logvar(4, 32)], probs(None), binaries(None)`
+
+
+~~~python
+# forwad中图像处理函数
+all_cam_features = []
+all_cam_pos = []
+for cam_id, cam_name in enumerate(self.camera_names):
+    # 单张图的shape： image[:, cam_id].shape = [4, 3, 480, 640]
+    features, pos = self.backbones[cam_id](image[:, cam_id])
+    # features的维度[4, 512, 15, 20] ,640, 320, 160, 80, 40, 20 卷积了5次.索引从0开始,返回的第4次卷积结果就是20
+    features = features[0] # take the last layer feature  [4, 512, 15, 20]
+    pos = pos[0]                                        # [1, 512, 15, 20]
+    all_cam_features.append(self.input_proj(features))  # 调整resNet的结果维度
+    all_cam_pos.append(pos)
+
+proprio_input = self.input_proj_robot_state(qpos)   #[4, 14] -> [4, 512]
+    
+# fold camera dimension into width dimension
+# 组合图像，宽维度上(最后一个维度)
+src = torch.cat(all_cam_features, axis=3)          # 组合图像    [4, 512, 15, 60]
+pos = torch.cat(all_cam_pos, axis=3)               # 组合位置编码 [1, 512, 15, 60]
+
+# 调用的Transformer类的forward函数
+
+# def forward(self, src, mask, query_embed, pos_embed, latent_input=None, proprio_input=None, additional_pos_embed=None):
+# def forward(self, 图像, 掩码None, query词嵌入, 图像的位置编码, 潜层特征(通过encode得到[34, 4, 512]), pose线性层出来后的结果[4, 512])
+
+# 词嵌入query_embed = nn.Embedding(num_queries, hidden_dim) => self.query_embed.weight.shape=[32, 512]
+
+# 输入self.transformer(图像[4, 512, 15, 60],掩码None, query词嵌入[32, 512]，图像位置编码[1, 512, 15, 60], 潜层特征[34, 4, 512], pose的线性输出[4, 512])
+hs = self.transformer(src, None, self.query_embed.weight, pos, latent_input, proprio_input, self.additional_pos_embed.weight)[0]
+# 输出hs.shape[7, 4, 32, 512], hs[0].shape[4, 32, 512]
+
+a_hat = self.action_head(hs)  # [4, 32, 16]    # 线性层[4, 32, 512]->[4, 32, 16]
+is_pad_hat = self.is_pad_head(hs) # [4, 32, 1] # 线性层[4, 32, 512]->[4, 32, 1]
+~~~
+
+4. Transformer结构
+~~~python
+Transformer(
+        d_model=args.hidden_dim,
+        dropout=args.dropout,
+        nhead=args.nheads,
+        dim_feedforward=args.dim_feedforward,
+        num_encoder_layers=args.enc_layers,
+        num_decoder_layers=args.dec_layers,
+        normalize_before=args.pre_norm,
+        return_intermediate_dec=True,
+        ）
+~~~
+
+# 4 VAE损失函数
+
+
++ 通过(图像**resnet特征层**、qpos**一层线性层**)和(qpos与action只**编码器**得到潜在特征)，使用Transformer得到预测的**序列actions**, 和潜在特征的均值和方差
+
++ 重建损失和KL散度
+
+## 4.1 重建损失
++ 通过模型预测的序列actions[4, 32, 16] - 原始的actions[4, 32, 16]即可
++ 这里采用L1，L2都可以
 
