@@ -229,6 +229,7 @@ def train_bc(train_dataloader, val_dataloader, config):
     if config['pretrain_path'] is not None:
         loading_status = policy.deserialize(torch.load(config['pretrain_path']))
         print(f'Pretrain model Loaded {loading_status} from: {config["pretrain_path"]}')
+    
     if config['resume_ckpt_path'] is not None:
         loading_status = policy.deserialize(torch.load(config['resume_ckpt_path']))
         print(f'Resume policy from: {config["resume_ckpt_path"]}, Status: {loading_status}')
@@ -257,7 +258,9 @@ def train_bc(train_dataloader, val_dataloader, config):
                 for batch_idx, data in enumerate(val_dataloader):
                     forward_dict = forward_pass(data, policy)
                     epoch_dicts.append(forward_dict)
-                
+                    if(batch_idx > 50):
+                        break
+
                 epoch_summary = compute_dict_mean(epoch_dicts)
                 validation_history.append(epoch_summary)
 
@@ -366,9 +369,9 @@ if __name__ == '__main__':
     parser.add_argument('--pretrain_path', action='store', type=str, help="~/ckpt_dir01/policy_last.ckpt", required=False)
     parser.add_argument('--resume_ckpt_path', action='store', type=str, help='resume_ckpt_path', required=False)
 
-    parser.add_argument('--eval_every', action='store', type=int, default=5, help='eval_every', required=False)
+    parser.add_argument('--eval_every', action='store', type=int, default=1, help='eval_every', required=False)
     parser.add_argument('--validate_every', action='store', type=int, default=1, help='validate_every', required=False)
-    parser.add_argument('--save_every', action='store', type=int, default=2, help='save_every', required=False)
+    parser.add_argument('--save_every', action='store', type=int, default=100, help='save_every', required=False)
 
     parser.add_argument('--skip_mirrored_data', action='store_true')
     parser.add_argument('--actuator_network_dir', action='store', type=str, help='actuator_network_dir', required=False)
@@ -382,7 +385,8 @@ if __name__ == '__main__':
     parser.add_argument('--hidden_dim', action='store', type=int, help='hidden_dim', required=False)
     parser.add_argument('--dim_feedforward', action='store', type=int, help='dim_feedforward', required=False)
     parser.add_argument('--temporal_agg', action='store_true')
-    parser.add_argument('--use_vq', action='store_true')
+    
+    parser.add_argument('--use_vq', action='store_true') # 是否用vq
     parser.add_argument('--vq_class', action='store', type=int, help='vq_class')
     parser.add_argument('--vq_dim', action='store', type=int, help='vq_dim')
     parser.add_argument('--no_encoder', action='store_true')

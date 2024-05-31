@@ -97,7 +97,7 @@ class DETRVAE(nn.Module):
             probs = binaries = mu = logvar = None
         else:
             # cvae encoder
-            is_training = actions is not None # train or val
+            is_training = actions is not None # train or val  如果有action就是训练
             ### Obtain latent z from action sequence
             if is_training:
                 # project action sequence to embedding dim, and concat with a CLS token
@@ -144,15 +144,19 @@ class DETRVAE(nn.Module):
                     logvar = latent_info[:, self.latent_dim:]
                     latent_sample = reparametrize(mu, logvar)  # 重参数化
                     latent_input = self.latent_out_proj(latent_sample)  # [4, 512]
-            
+                # print("train: ", latent_input.shape, mu, logvar)
+            # 验证
             else:
                 mu = logvar = binaries = probs = None
                 if self.vq:
                     latent_input = self.latent_out_proj(vq_sample.view(-1, self.vq_class * self.vq_dim))
                 else:
+                    # [4, 32]全部为0
                     latent_sample = torch.zeros([bs, self.latent_dim], dtype=torch.float32).to(qpos.device)
                     latent_input = self.latent_out_proj(latent_sample)
 
+                # print("val: ", latent_input, mu, logvar)
+                # exit(-1)
         return latent_input, probs, binaries, mu, logvar
 
     def forward(self, qpos, image, env_state, actions=None, is_pad=None, vq_sample=None):

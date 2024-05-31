@@ -206,6 +206,7 @@ class DiffusionPolicy(nn.Module):
 class ACTPolicy(nn.Module):
     def __init__(self, args_override):
         super().__init__()
+        # 创建模型
         model, optimizer = build_ACT_model_and_optimizer(args_override)
         self.model = model # CVAE decoder
         self.optimizer = optimizer
@@ -213,29 +214,49 @@ class ACTPolicy(nn.Module):
         self.vq = args_override['vq']
         print(f'KL Weight {self.kl_weight}')
 
+    # 损失函数
     def __call__(self, qpos, image, actions=None, is_pad=None, vq_sample=None):
         env_state = None
         normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                          std=[0.229, 0.224, 0.225])
+        
+        # 图像归一化
         image = normalize(image)
+        
+        # 动作取num_queries个
         if actions is not None: # training time
             actions = actions[:, :self.model.num_queries]
             is_pad = is_pad[:, :self.model.num_queries]
 
             loss_dict = dict()
+            
+            # 模型的forward函数 返回预测的actions序列和潜在模型的均值和方差
+            #model的forward函数参数(self, qpos, image, env_state(None), actions=None, is_pad=None, vq_sample=None):
             a_hat, is_pad_hat, (mu, logvar), probs, binaries = self.model(qpos, image, env_state, actions, is_pad, vq_sample)
+            
+            # 误差1：Kl散度误差 如果没有潜在模型就没预测均值和方差, Kl=0
             if self.vq or self.model.encoder is None:
                 total_kld = [torch.tensor(0.0)]
             else:
                 total_kld, dim_wise_kld, mean_kld = kl_divergence(mu, logvar)
+            
+            # 如果有潜在网络预测出均值和方差, 并且使用了vq参数, 就使用L1损失
             if self.vq:
                 loss_dict['vq_discrepancy'] = F.l1_loss(probs, binaries, reduction='mean')
+            
+            # 误差2：重建损失
             all_l1 = F.l1_loss(actions, a_hat, reduction='none')
+            
+            # 取非掩码部分
             l1 = (all_l1 * ~is_pad.unsqueeze(-1)).mean()
+            
             loss_dict['l1'] = l1
             loss_dict['kl'] = total_kld[0]
+            # 总损失, kl和l1量纲不一样, kl乘个系数
             loss_dict['loss'] = loss_dict['l1'] + loss_dict['kl'] * self.kl_weight
             return loss_dict
+        
+        # 推理时, 如果是推理只需要qpos, 和image, 返回预测的序列actions即可
         else: # inference time
             a_hat, _, (_, _), _, _ = self.model(qpos, image, env_state, vq_sample=vq_sample) # no action, sample from prior
             return a_hat

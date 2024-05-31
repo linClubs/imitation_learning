@@ -273,11 +273,32 @@ Transformer(
 # 4 VAE损失函数
 
 
-+ 通过(图像**resnet特征层**、qpos**一层线性层**)和(qpos与action只**编码器**得到潜在特征)，使用Transformer得到预测的**序列actions**, 和潜在特征的均值和方差
++ 通过(图像**resnet特征层**)、(qpos**一层线性层**)、(qpos与action只**编码器**得到潜在特征)，三个(加上位置编码)喂给Transformer得到预测的**序列actions**, 并返回序列actions、潜在特征的均值、方差
 
 + 重建损失和KL散度
 
-## 4.1 重建损失
 + 通过模型预测的序列actions[4, 32, 16] - 原始的actions[4, 32, 16]即可
 + 这里采用L1，L2都可以
+
++ 训练时`policy.py`中计算损失`def __call__()`函数
+~~~python
+# 1 KL散度
+klds = -0.5 * (1 + logvar - mu.pow(2) - logvar.exp())
+total_kld = klds.sum(1).mean(0, True)
+dimension_wise_kld = klds.mean(0)
+mean_kld = klds.mean(1).mean(0, True)
+
+# 2 重建损失L1
+all_l1 = F.l1_loss(actions, a_hat, reduction='none')
+# 取非掩码部分
+l1 = (all_l1 * ~is_pad.unsqueeze(-1)).mean()
+
+# 总损失, kl和l1量纲不一样, kl乘个系数
+loss_dict['loss'] = loss_dict['l1'] + loss_dict['kl'] * self.kl_weight
+~~~
+
+
+# 5 推理过程inference process
+
++ `VAE`模型只喂了`image`和`qpos`给模型然后调用`model()`, `actions`给的`None`值， `forward`函数调用与训练时不同的
 
