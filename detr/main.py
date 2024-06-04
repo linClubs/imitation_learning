@@ -62,6 +62,7 @@ def get_args_parser():
     parser.add_argument('--num_queries', default=400, type=int, # will be overridden
                         help="Number of query slots")
     
+    # 多头里面是否先归一化
     parser.add_argument('--pre_norm', action='store_true')
 
     # * Segmentation
@@ -70,6 +71,7 @@ def get_args_parser():
 
     # repeat args in imitate_episodes just to avoid error. Will not be used 
     # 重复imitate_episodes中的参数 不会被调用
+    parser.add_argument('--dataset_dir', action='store')
     parser.add_argument('--eval', action='store_true')
     parser.add_argument('--onscreen_render', action='store_true')
     parser.add_argument('--ckpt_dir', action='store', type=str, help='ckpt_dir', required=True)

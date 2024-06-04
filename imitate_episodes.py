@@ -57,8 +57,9 @@ def main(args):
     state_dim = 14
     lr_backbone = 1e-5
     backbone = 'resnet18'
+    
     if policy_class == 'ACT':
-        enc_layers = 4
+        enc_layers = 4     # 编码层 4
         dec_layers = 7     # 7层解码器，中间层输出有7个，最后计算损失只取了[0]层
         nheads = 8         
         policy_config = {'lr': args['lr'],
@@ -125,7 +126,6 @@ def main(args):
     # expr_name = ckpt_dir.split('/')[-1]
     # with open(config_path, 'wb') as f:
     #     pickle.dump(config, f)
-    
     # 创建dataloader
     # print("\n")
     # print(dataset_dir)
@@ -352,6 +352,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset_dir', action='store', type=str, default="~/data0308-2", help='dataset_dir', required=False)
     parser.add_argument('--episode_len', action='store', type=int, default=500, help='episode_len', required=False)
+    
     parser.add_argument('--task_name', action='store', type=str, default="aloha_mobile_dummy", help='task_name', required=False)
     parser.add_argument('--camera_names', action='store', type=list,
                         default=['cam_high', 'cam_left_wrist', 'cam_right_wrist'], help='camera_names', required=False)

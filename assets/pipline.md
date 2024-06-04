@@ -302,3 +302,4 @@ loss_dict['loss'] = loss_dict['l1'] + loss_dict['kl'] * self.kl_weight
 
 + `VAE`模型只喂了`image`和`qpos`给模型然后调用`model()`, `actions`给的`None`值， `forward`函数调用与训练时不同的
 
++ 假设timestep为500, query=32。 推理时按会预测 500 * (500+32) * 16的action进行联合处理

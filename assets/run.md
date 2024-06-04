@@ -20,4 +20,7 @@ sys.path.append("./")
   dim_t = self.temperature ** (2 * (dim_t // 2) / self.num_pos_feats)
 # 修改：将上面这句改成下面即可
 dim_t = self.temperature ** (2 * torch.div(dim_t, 2, rounding_mode='trunc') / self.num_pos_feats)
+
+# 
+sudo ln -s /lib/x86_64-linux-gnu/libffi.so.7.1.0 ~/miniconda3/envs/aloha/lib/libffi.so.7
 ~~~

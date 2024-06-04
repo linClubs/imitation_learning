@@ -1,0 +1,57 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "imitate_train",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            // "justMyCode": false,
+            "args": [
+                "--dataset_dir", "/home/lin/data0308/",
+                "--task_name", "aloha_mobile_dummy",
+                "--ckpt_dir", "~/ckpt_dir",
+                "--policy_class", "ACT",
+                "--kl_weight", "10", 
+                "--chunk_size", "32", 
+                "--hidden_dim", "512", 
+                "--batch_size", "4",
+                "--dim_feedforward", "3200", 
+                "--num_epochs", "800",
+                "--lr", "1e-5",
+                "--seed", "0"
+            ]
+        },
+        
+        {
+            "name": "inference",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--task_name", "aloha_mobile_dummy",
+                "--ckpt_dir", "~/ckpt_dir",
+                "--policy_class", "ACT",
+                "--kl_weight", "10", 
+                "--chunk_size", "32", 
+                "--hidden_dim", "512", 
+                "--batch_size", "32",
+                "--dim_feedforward", "3200", 
+                "--num_epochs", "800",
+                "--lr", "1e-5",
+                "--seed", "0"
+            ],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0",
+                // "PYDEVD_DISABLE_FILE_VALIDATION": "1",
+            }
+        }
+
+    ]
+}
